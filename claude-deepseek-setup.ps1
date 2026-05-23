@@ -2,8 +2,7 @@
     [switch]$DryRun,
     [switch]$Yes,
     [switch]$SkipOptional,
-    [string]$DeepSeekApiKey,
-    [string]$AnthropicApiKey
+    [string]$DeepSeekApiKey
 )
 
 $ErrorActionPreference = "Stop"
@@ -97,7 +96,8 @@ function Save-State($Name, $Status) {
     $state = @{}
     if (Test-Path $StateFile) {
         try {
-            $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json -AsHashtable
+            $json = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
+            $json.PSObject.Properties | ForEach-Object { $state[$_.Name] = $_.Value }
         } catch {
             $state = @{}
         }
@@ -185,6 +185,74 @@ function Configure-ToolMirrors {
     } else {
         Write-Warn "未检测到 python，跳过 pip 镜像配置"
     }
+}
+
+# ── DeepSeek AI 助手集成 ────────────────────────────────────────────────────────
+function Invoke-DeepSeekAsk($Question, $Context) {
+    $key = $deepSeekKey
+    if ([string]::IsNullOrWhiteSpace($key)) {
+        $key = [Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")
+    }
+    if ([string]::IsNullOrWhiteSpace($key)) {
+        Write-Host "    (未配置 DeepSeek Key，无法调用 AI 助手)" -ForegroundColor DarkGray
+        return
+    }
+
+    $systemContent = "你是面向电脑小白的安装助手。用简体中文回答。给出最多3个具体下一步。先解释错误含义，再给修复方案。给出的命令要说明在哪里运行。"
+    $userContent = "当前环境:`nWindows $([System.Environment]::OSVersion.Version)`nNode: $(if(Test-Command node){'已安装'}else{'未安装'})`nnpm: $(if(Test-Command npm){'已安装'}else{'未安装'})`nPython: $(if(Test-Command python){'已安装'}else{'未安装'})`nClaude: $(if(Test-Command claude){'已安装'}else{'未安装'})`n`n$Context`n`n用户问题:`n$Question"
+
+    $body = @{
+        model = "deepseek-v4-flash"
+        messages = @(
+            @{ role = "system"; content = $systemContent },
+            @{ role = "user"; content = $userContent }
+        )
+        stream = $false
+        temperature = 0.2
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        $response = Invoke-RestMethod -Uri "$DeepSeekBaseUrl/chat/completions" `
+            -Method Post `
+            -Headers @{ "Authorization" = "Bearer $key"; "Content-Type" = "application/json" } `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
+            -TimeoutSec 30
+
+        $answer = $response.choices[0].message.content
+        Write-Host ""
+        Write-Host "┌─ DeepSeek 助手 ─────────────────────────────────────────┐" -ForegroundColor Magenta
+        $answer -split "`n" | ForEach-Object { Write-Host "│ $_" -ForegroundColor White }
+        Write-Host "└────────────────────────────────────────────────────────────┘" -ForegroundColor Magenta
+        Write-Host ""
+    } catch {
+        Write-Host "    (DeepSeek 请求失败: $_)" -ForegroundColor DarkGray
+    }
+}
+
+function Invoke-DeepSeekDiagnose($StepName, $ErrorDetail) {
+    Write-Host ""
+    Write-Host "    正在请求 DeepSeek 分析错误原因..." -ForegroundColor Yellow
+    $logTail = ""
+    if (Test-Path $LogFile) {
+        $logTail = (Get-Content $LogFile -Tail 20) -join "`n"
+    }
+    $context = "最近日志:`n$logTail`n`n额外错误信息:`n$ErrorDetail"
+    Invoke-DeepSeekAsk "安装步骤「$StepName」失败了，请分析原因并告诉我怎么修复。" $context
+}
+
+function Start-DeepSeekChat {
+    Write-Host ""
+    Write-Host "━━━ DeepSeek 助手（输入问题回车发送，直接回车退出）━━━" -ForegroundColor Cyan
+    while ($true) {
+        Write-Host ""
+        $question = Read-Host "你"
+        if ([string]::IsNullOrWhiteSpace($question)) { break }
+        $logTail = ""
+        if (Test-Path $LogFile) { $logTail = (Get-Content $LogFile -Tail 10) -join "`n" }
+        Invoke-DeepSeekAsk $question "最近日志:`n$logTail"
+    }
+    Write-Host ""
+    Write-Host "祝你使用愉快！" -ForegroundColor Green
 }
 
 function Install-ClaudeCode {
@@ -295,7 +363,7 @@ Answer Format:
 "@
 }
 
-function Ensure-Workspace($DeepSeekKey, $AnthropicKey) {
+function Ensure-Workspace($DeepSeekKey) {
     Write-Step "创建默认工作区"
     if ($DryRun) {
         Write-Host "DRY create $Workspace" -ForegroundColor DarkGray
@@ -308,14 +376,12 @@ function Ensure-Workspace($DeepSeekKey, $AnthropicKey) {
     $envFile = @"
 DEEPSEEK_API_KEY=$DeepSeekKey
 DEEPSEEK_BASE_URL=$DeepSeekBaseUrl
-ANTHROPIC_API_KEY=$AnthropicKey
 "@
     Set-WorkspaceFile ".env" $envFile -Sensitive
 
     $envExample = @"
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-ANTHROPIC_API_KEY=your_anthropic_api_key_optional
 "@
     Set-WorkspaceFile ".env.example" $envExample
 
@@ -343,7 +409,9 @@ __pycache__/
 常用环境变量：
 - DEEPSEEK_API_KEY
 - DEEPSEEK_BASE_URL
-- ANTHROPIC_API_KEY
+- ANTHROPIC_BASE_URL
+- ANTHROPIC_AUTH_TOKEN
+- ANTHROPIC_MODEL
 "@
     Set-WorkspaceFile "CLAUDE.md" $claudeMd
 
@@ -362,7 +430,7 @@ if not api_key:
     raise SystemExit("DEEPSEEK_API_KEY is not set")
 
 payload = {
-    "model": "deepseek-chat",
+    "model": "deepseek-v4-flash",
     "messages": [
         {"role": "system", "content": "You are a concise setup verifier."},
         {"role": "user", "content": "Reply with: DeepSeek OK"}
@@ -395,16 +463,13 @@ Add-Content -Path $LogFile -Value "[$(Get-Date -Format s)] START $AppName"
 Write-Host ""
 Write-Host "Claude + DeepSeek 空白电脑安装向导" -ForegroundColor Cyan
 Write-Host "这个工具会检测环境、安装依赖、配置 API Key，并验证终端里的 claude 命令。"
+Write-Host "💡 安装过程中如果遇到问题，DeepSeek AI 助手会自动分析并给出建议。"
 Write-Host "日志: $LogFile"
 Write-Host ""
 
 $deepSeekKey = $DeepSeekApiKey
 if ([string]::IsNullOrWhiteSpace($deepSeekKey)) {
     $deepSeekKey = Read-Host "请输入 DeepSeek API Key，也可以直接回车稍后再配"
-}
-$anthropicKey = $AnthropicApiKey
-if ([string]::IsNullOrWhiteSpace($anthropicKey)) {
-    $anthropicKey = Read-Host "可选：请输入 Anthropic API Key，也可以直接回车使用 Claude 登录流程"
 }
 
 try {
@@ -413,28 +478,26 @@ try {
     }
     Write-Ok "WinGet 可用"
 
-    Install-WinGetPackage "Git.Git" "Git"
     Install-WinGetPackage "OpenJS.NodeJS.LTS" "Node.js LTS"
     Install-WinGetPackage "Python.Python.3.12" "Python 3.12"
-    Install-WinGetPackage "Microsoft.VisualStudioCode" "VS Code"
-    Install-WinGetPackage "Microsoft.WindowsTerminal" "Windows Terminal"
     Update-SessionPath
     Configure-ToolMirrors
 
-    if (-not $SkipOptional -and (Confirm-Step "是否安装 Docker Desktop？这一步较大，但对后端/数据库/自动化测试很有用" $false)) {
-        Install-WinGetPackage "Docker.DockerDesktop" "Docker Desktop"
-    }
-
     Set-UserEnv "DEEPSEEK_API_KEY" $deepSeekKey
     Set-UserEnv "DEEPSEEK_BASE_URL" $DeepSeekBaseUrl
-    Set-UserEnv "ANTHROPIC_API_KEY" $anthropicKey
+
+    # 配置 Claude Code 使用 DeepSeek API
+    Write-Step "配置 Claude Code 使用 DeepSeek"
+    Set-UserEnv "ANTHROPIC_BASE_URL" "https://api.deepseek.com/anthropic"
+    Set-UserEnv "ANTHROPIC_AUTH_TOKEN" $deepSeekKey
+    Set-UserEnv "ANTHROPIC_MODEL" "deepseek-v4-pro"
 
     Install-ClaudeCode
 
-    Ensure-Workspace $deepSeekKey $anthropicKey
+    Ensure-Workspace $deepSeekKey
 
     Write-Step "验证命令"
-    foreach ($cmd in @("git --version", "node -v", "npm -v", "python --version", "claude --version")) {
+    foreach ($cmd in @("node -v", "npm -v", "python --version", "claude --version")) {
         $ok = Invoke-Logged $cmd -AllowFailure
         if ($ok) { Write-Ok $cmd } else { Write-Warn "$cmd 验证失败，请重开终端后再试" }
     }
@@ -445,8 +508,12 @@ try {
     Write-Host "如需测试 DeepSeek: cd `"$Workspace`"; python deepseek_smoke_test.py"
 } catch {
     Write-Fail $_
+    Invoke-DeepSeekDiagnose "脚本执行" "$_"
     Write-Host ""
     Write-Host "安装没有完全完成。你可以修复上面的错误后重复运行本脚本，它会跳过已完成的部分。"
     Write-Host "日志位置: $LogFile"
     exit 1
 }
+
+# 安装完成后进入 DeepSeek 多轮对话
+Start-DeepSeekChat

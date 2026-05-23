@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── 终端美化：切换到 Pro 主题（深色背景、大字体）并调整窗口 ──────────────────────
+if [[ "${TERM_PROGRAM:-}" == "Apple_Terminal" ]]; then
+  printf '\033[36m==> 正在优化终端显示效果...\033[0m\n'
+  osascript -e '
+  tell application "Terminal"
+    -- 修改 Pro 主题的字体大小（固化到主题本身）
+    set font name of settings set "Pro" to "Menlo"
+    set font size of settings set "Pro" to 14
+    -- 设为默认
+    set default settings to settings set "Pro"
+    set startup settings to settings set "Pro"
+    -- 应用到当前窗口
+    set currentTab to selected tab of front window
+    set current settings of currentTab to settings set "Pro"
+    tell front window
+      set bounds to {60, 60, 1000, 750}
+    end tell
+  end tell
+  ' 2>/dev/null || true
+  printf '\033[32mOK  已切换为深色主题、14号字体，并设为默认\033[0m\n'
+fi
+
 DRY_RUN=0
 YES=0
 SKIP_OPTIONAL=0
@@ -30,10 +52,10 @@ PIP_INDEXES=(
   "https://repo.huaweicloud.com/repository/pypi/simple"
   "https://pypi.org/simple"
 )
-HOMEBREW_BREW_GIT_REMOTE_DEFAULT="https://mirrors.ustc.edu.cn/brew.git"
-HOMEBREW_CORE_GIT_REMOTE_DEFAULT="https://mirrors.ustc.edu.cn/homebrew-core.git"
-HOMEBREW_API_DOMAIN_DEFAULT="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-HOMEBREW_BOTTLE_DOMAIN_DEFAULT="https://mirrors.ustc.edu.cn/homebrew-bottles"
+HOMEBREW_BREW_GIT_REMOTE_DEFAULT="https://mirrors.aliyun.com/homebrew/brew.git"
+HOMEBREW_CORE_GIT_REMOTE_DEFAULT="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
+HOMEBREW_API_DOMAIN_DEFAULT="https://mirrors.aliyun.com/homebrew/homebrew-bottles/api"
+HOMEBREW_BOTTLE_DOMAIN_DEFAULT="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
 
 mkdir -p "$STATE_DIR"
 touch "$LOG_FILE"
@@ -202,7 +224,7 @@ deepseek_ask() {
   sys_json="$(printf '%s' "$system_content" | perl -MJSON::PP -0777 -ne 'print encode_json($_)' 2>/dev/null || printf '"%s"' "$system_content")"
   usr_json="$(printf '%s' "$user_content" | perl -MJSON::PP -0777 -ne 'print encode_json($_)' 2>/dev/null || printf '"%s"' "$user_content")"
 
-  payload="{\"model\":\"deepseek-chat\",\"messages\":[{\"role\":\"system\",\"content\":$sys_json},{\"role\":\"user\",\"content\":$usr_json}],\"stream\":false,\"temperature\":0.2}"
+  payload="{\"model\":\"deepseek-v4-flash\",\"messages\":[{\"role\":\"system\",\"content\":$sys_json},{\"role\":\"user\",\"content\":$usr_json}],\"stream\":false,\"temperature\":0.2}"
 
   response="$(curl -sS --connect-timeout 10 --max-time 30 \
     "${DEEPSEEK_BASE_URL}/chat/completions" \
@@ -261,7 +283,8 @@ confirm() {
   fi
   local suffix="[Y/n]"
   [[ "$default" == "no" ]] && suffix="[y/N]"
-  read -r -p "$question $suffix " answer
+  local answer=""
+  read -r -p "$question $suffix " answer || true
   if [[ -z "$answer" ]]; then
     [[ "$default" == "yes" ]]
     return
@@ -330,7 +353,7 @@ append_env() {
   local name="$1"
   local value="$2"
 
-  step "写入用户环境变量 $name"
+  step "写入用户环境变量 ${name}"
 
   local shell_name
   shell_name="$(basename "${SHELL:-zsh}")"
@@ -338,22 +361,20 @@ append_env() {
   [[ "$shell_name" == "bash" ]] && rc="$HOME/.bash_profile"
 
   local current=""
-  if [[ -n "${!name+x}" ]]; then
-    current="${!name}"
-  fi
+  current="$(printenv "$name" 2>/dev/null)" || current=""
   if [[ -z "$current" && -f "$rc" ]]; then
     current="$(grep -E "^export $name=" "$rc" | tail -n 1 | sed -E "s/^export $name=\"?//; s/\"?$//" || true)"
   fi
 
   if [[ -n "$current" ]]; then
-    warn "$name 已配置为 $(mask_value "$current")"
+    warn "${name} 已配置为 $(mask_value "$current")"
     if [[ -z "$value" ]]; then
-      ok "未输入新值，保留现有 $name"
+      ok "未输入新值，保留现有 ${name}"
       save_state "env:$name" "kept"
       return 0
     fi
-    if ! confirm "是否覆盖 $name？" "no"; then
-      ok "保留现有 $name"
+    if ! confirm "是否覆盖 ${name} ？" "no"; then
+      ok "保留现有 ${name}"
       save_state "env:$name" "kept"
       return 0
     fi
@@ -417,10 +438,10 @@ write_workspace_file() {
 
   if [[ -f "$target" ]]; then
     local label="$relative_path"
-    [[ "$sensitive" == "yes" ]] && label="$relative_path（包含本机密钥）"
+    [[ "$sensitive" == "yes" ]] && label="${relative_path}（包含本机密钥）"
     warn "$label 已存在"
-    if ! confirm "是否覆盖 $relative_path？" "no"; then
-      ok "保留 $relative_path"
+    if ! confirm "是否覆盖 ${relative_path} ？" "no"; then
+      ok "保留 ${relative_path}"
       save_state "workspace:$relative_path" "kept"
       cat >/dev/null
       return 0
@@ -476,6 +497,20 @@ install_brew_if_needed() {
 brew_install() {
   local package="$1"
   local display="$2"
+  local cmd_name="${3:-}"  # 可选：对应的命令名，用于检测系统是否已有
+
+  # 如果提供了命令名，先检查系统是否已有该命令
+  if [[ -n "$cmd_name" ]] && command -v "$cmd_name" >/dev/null 2>&1; then
+    local existing_ver
+    existing_ver="$("$cmd_name" --version 2>/dev/null | head -1 || echo "已安装")"
+    ok "$display 已可用 ($existing_ver)"
+    if ! confirm "系统已有 ${display}，是否仍通过 Homebrew 安装/升级？" "no"; then
+      ok "跳过 $display"
+      save_state "$package" "system-present"
+      return
+    fi
+  fi
+
   step "检测 $display"
   if brew list "$package" >/dev/null 2>&1 || brew list --cask "$package" >/dev/null 2>&1; then
     ok "$display 已安装"
@@ -485,10 +520,18 @@ brew_install() {
 
   step "安装 $display"
   local exit_code=0
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '\033[90mDRY brew install %s\033[0m\n' "$package"
+    save_state "$package" "installed"
+    return
+  fi
+
+  # 直接输出到终端，让用户看到详细的下载和安装进度
+  # --verbose 让 brew 显示下载进度和详细步骤
   if [[ "$package" == "visual-studio-code" || "$package" == "docker" || "$package" == "claude-code" ]]; then
-    run_with_progress "正在安装 $display..." brew install --cask "$package" || exit_code=$?
+    brew install --cask --verbose "$package" 2>&1 | tee -a "$LOG_FILE" || exit_code=$?
   else
-    run_with_progress "正在安装 $display..." brew install "$package" || exit_code=$?
+    brew install --verbose "$package" 2>&1 | tee -a "$LOG_FILE" || exit_code=$?
   fi
 
   if [[ "$exit_code" -ne 0 ]]; then
@@ -570,7 +613,7 @@ if not api_key:
     raise SystemExit("DEEPSEEK_API_KEY is not set")
 
 payload = {
-    "model": "deepseek-chat",
+    "model": "deepseek-v4-flash",
     "messages": [
         {"role": "system", "content": "You are a concise setup verifier."},
         {"role": "user", "content": "Reply with: DeepSeek OK"}
@@ -612,77 +655,161 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+# 强制设置 Homebrew 镜像源（覆盖 ~/.zshrc 中可能过期的配置）
+export HOMEBREW_BREW_GIT_REMOTE="$HOMEBREW_BREW_GIT_REMOTE_DEFAULT"
+export HOMEBREW_CORE_GIT_REMOTE="$HOMEBREW_CORE_GIT_REMOTE_DEFAULT"
+export HOMEBREW_API_DOMAIN="$HOMEBREW_API_DOMAIN_DEFAULT"
+export HOMEBREW_BOTTLE_DOMAIN="$HOMEBREW_BOTTLE_DOMAIN_DEFAULT"
+
 install_brew_if_needed
 configure_mirrors
-run_with_progress "正在更新 Homebrew 索引..." brew update || {
-  warn "brew update 失败，正在请求 DeepSeek 分析..."
-  deepseek_diagnose "brew update" "brew update 命令执行失败"
-  warn "继续尝试安装..."
+
+# ── 安装 Node.js（优先国内镜像 pkg 直装，回退 brew）────────────────────────────
+install_node() {
+  if command -v node >/dev/null 2>&1; then
+    local ver
+    ver="$(node -v 2>/dev/null)"
+    ok "Node.js 已可用 ($ver)"
+    if confirm "系统已有 Node.js，是否跳过？" "yes"; then
+      save_state "node" "system-present"
+      return
+    fi
+  fi
+
+  step "安装 Node.js LTS"
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '\033[90mDRY install Node.js via npmmirror pkg\033[0m\n'
+    save_state "node" "installed"
+    return
+  fi
+
+  # 优先从国内镜像下载 pkg 安装包
+  local node_version="v22.15.0"
+  local pkg_url="https://npmmirror.com/mirrors/node/${node_version}/node-${node_version}.pkg"
+  local pkg_file="$STATE_DIR/node-${node_version}.pkg"
+
+  printf '    从国内镜像下载 Node.js %s ...\n' "$node_version"
+  if curl -L --progress-bar --connect-timeout 15 --max-time 300 -o "$pkg_file" "$pkg_url" 2>&1; then
+    printf '    正在安装 Node.js（可能需要输入密码）...\n'
+    if sudo installer -pkg "$pkg_file" -target / >> "$LOG_FILE" 2>&1; then
+      rm -f "$pkg_file"
+      ok "Node.js 安装完成 ($(node -v 2>/dev/null || echo $node_version))"
+      save_state "node" "installed"
+      return
+    fi
+  fi
+
+  # 回退到 brew
+  warn "国内镜像下载失败，尝试通过 Homebrew 安装..."
+  brew install --verbose node 2>&1 | tee -a "$LOG_FILE" || {
+    fail "Node.js 安装失败"
+    deepseek_diagnose "安装 Node.js" "npmmirror pkg 下载和 brew install node 均失败"
+    exit 1
+  }
+  ok "Node.js 安装完成"
+  save_state "node" "installed"
 }
 
-brew_install git "Git"
-brew_install node "Node.js LTS"
-brew_install python@3.12 "Python 3.12"
-brew_install visual-studio-code "VS Code"
-configure_mirrors
+# ── 安装 Python（优先国内镜像 pkg 直装，回退 brew）──────────────────────────────
+install_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    local ver
+    ver="$(python3 --version 2>/dev/null)"
+    ok "Python 已可用 ($ver)"
+    if confirm "系统已有 Python，是否跳过？" "yes"; then
+      save_state "python" "system-present"
+      return
+    fi
+  fi
 
-if [[ "$SKIP_OPTIONAL" != "1" ]] && confirm "是否安装 Docker Desktop？这一步较大，但对后端/数据库/自动化测试很有用" "no"; then
-  brew_install docker "Docker Desktop"
-fi
+  step "安装 Python 3.12"
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '\033[90mDRY install Python via npmmirror pkg\033[0m\n'
+    save_state "python" "installed"
+    return
+  fi
+
+  # 优先从国内镜像下载 pkg
+  local py_version="3.12.7"
+  local pkg_url="https://npmmirror.com/mirrors/python/${py_version}/python-${py_version}-macos11.pkg"
+  local pkg_file="$STATE_DIR/python-${py_version}.pkg"
+
+  printf '    从国内镜像下载 Python %s ...\n' "$py_version"
+  if curl -L --progress-bar --connect-timeout 15 --max-time 300 -o "$pkg_file" "$pkg_url" 2>&1; then
+    printf '    正在安装 Python（可能需要输入密码）...\n'
+    if sudo installer -pkg "$pkg_file" -target / >> "$LOG_FILE" 2>&1; then
+      rm -f "$pkg_file"
+      ok "Python 安装完成 ($(python3 --version 2>/dev/null || echo $py_version))"
+      save_state "python" "installed"
+      return
+    fi
+  fi
+
+  # 回退到 brew
+  warn "国内镜像下载失败，尝试通过 Homebrew 安装..."
+  brew install --verbose python@3.12 2>&1 | tee -a "$LOG_FILE" || {
+    fail "Python 安装失败"
+    deepseek_diagnose "安装 Python" "npmmirror pkg 下载和 brew install python 均失败"
+    exit 1
+  }
+  ok "Python 安装完成"
+  save_state "python" "installed"
+}
+
+install_node
+install_python
 
 append_env "DEEPSEEK_API_KEY" "$DEEPSEEK_KEY"
 append_env "DEEPSEEK_BASE_URL" "$DEEPSEEK_BASE_URL"
-append_env "ANTHROPIC_API_KEY" "$ANTHROPIC_KEY"
+
+# 配置 Claude Code 使用 DeepSeek API（Anthropic 兼容端点）
+step "配置 Claude Code 使用 DeepSeek"
+append_env "ANTHROPIC_BASE_URL" "https://api.deepseek.com/anthropic"
+append_env "ANTHROPIC_AUTH_TOKEN" "$DEEPSEEK_KEY"
+append_env "ANTHROPIC_MODEL" "deepseek-v4-pro"
 
 step "安装 Claude Code"
 if has_cmd claude; then
-  ok "Claude Code 已安装"
-  if confirm "是否重新安装/覆盖 Claude Code？" "no"; then
-    installed=0
-    if command -v npm >/dev/null 2>&1; then
-      for registry in "${NPM_REGISTRIES[@]}"; do
-        try_run npm config set registry "$registry" || true
-        if run_with_progress "正在通过 npm 安装 Claude Code..." npm install -g @anthropic-ai/claude-code --registry "$registry"; then
-          installed=1
-          break
-        fi
-      done
-    fi
-    if [[ "$installed" != "1" ]]; then
-      if ! run_with_progress "正在通过 Homebrew 安装 Claude Code..." brew install --cask claude-code; then
-        fail "Claude Code 安装失败：已尝试 npm 国内镜像、npm 官方源和 Homebrew"
-        deepseek_diagnose "安装 Claude Code" "npm install -g @anthropic-ai/claude-code 和 brew install --cask claude-code 均失败"
-        exit 1
-      fi
-    fi
-  else
+  ok "Claude Code 已安装 ($(claude --version 2>/dev/null | head -1 || echo ""))"
+  if ! confirm "是否重新安装/覆盖 Claude Code？" "no"; then
     save_state "claude-code" "kept"
+  else
+    printf '    正在通过 npm 国内镜像安装 Claude Code...\n'
+    sudo npm install -g @anthropic-ai/claude-code --registry https://registry.npmmirror.com 2>&1 | tee -a "$LOG_FILE" || {
+      warn "npm 国内镜像失败，尝试官方源..."
+      sudo npm install -g @anthropic-ai/claude-code --registry https://registry.npmjs.org 2>&1 | tee -a "$LOG_FILE" || {
+        fail "Claude Code 安装失败"
+        deepseek_diagnose "安装 Claude Code" "npm install -g @anthropic-ai/claude-code 失败"
+        exit 1
+      }
+    }
+    ok "Claude Code 安装完成"
+    save_state "claude-code" "installed"
   fi
 else
-  installed=0
-  if command -v npm >/dev/null 2>&1; then
-    for registry in "${NPM_REGISTRIES[@]}"; do
-      try_run npm config set registry "$registry" || true
-      if run_with_progress "正在通过 npm 安装 Claude Code..." npm install -g @anthropic-ai/claude-code --registry "$registry"; then
-        installed=1
-        break
-      fi
-    done
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '\033[90mDRY npm install -g @anthropic-ai/claude-code\033[0m\n'
+  else
+    printf '    正在通过 npm 国内镜像安装 Claude Code...\n'
+    sudo npm install -g @anthropic-ai/claude-code --registry https://registry.npmmirror.com 2>&1 | tee -a "$LOG_FILE" || {
+      warn "npm 国内镜像失败，尝试官方源..."
+      sudo npm install -g @anthropic-ai/claude-code --registry https://registry.npmjs.org 2>&1 | tee -a "$LOG_FILE" || {
+        fail "Claude Code 安装失败"
+        deepseek_diagnose "安装 Claude Code" "npm install -g @anthropic-ai/claude-code 失败"
+        exit 1
+      }
+    }
   fi
-  if [[ "$installed" != "1" ]]; then
-    if ! run_with_progress "正在通过 Homebrew 安装 Claude Code..." brew install --cask claude-code; then
-      fail "Claude Code 安装失败：已尝试 npm 国内镜像、npm 官方源和 Homebrew"
-      deepseek_diagnose "安装 Claude Code" "npm install -g @anthropic-ai/claude-code 和 brew install --cask claude-code 均失败"
-      exit 1
-    fi
-  fi
+  ok "Claude Code 安装完成"
   save_state "claude-code" "installed"
 fi
 
 ensure_workspace "$DEEPSEEK_KEY" "$ANTHROPIC_KEY"
 
 step "验证命令"
-for cmd in "git --version" "node -v" "npm -v" "python3 --version" "claude --version"; do
+for cmd in "node -v" "npm -v" "python3 --version" "claude --version"; do
   if bash -lc "$cmd" >> "$LOG_FILE" 2>&1; then
     ok "$cmd"
   else
@@ -695,13 +822,17 @@ ok "安装流程完成。请重新打开终端，然后输入: claude"
 printf '默认工作区: %s\n' "$WORKSPACE"
 printf '如需测试 DeepSeek: cd "%s"; python3 deepseek_smoke_test.py\n\n' "$WORKSPACE"
 
-# 安装完成后提供交互式帮助入口
-if confirm "还有问题想问 DeepSeek 吗？" "no"; then
-  while true; do
-    deepseek_interactive_help
-    if ! confirm "继续提问？" "no"; then
-      break
-    fi
-  done
-fi
+# 安装完成后进入 DeepSeek 多轮对话模式
+printf '\n\033[36m━━━ DeepSeek 助手（输入问题回车发送，直接回车退出）━━━\033[0m\n'
+while true; do
+  printf '\n\033[36m你: \033[0m'
+  local_question=""
+  read -r local_question || break
+  if [[ -z "$local_question" ]]; then
+    break
+  fi
+  local log_tail
+  log_tail="$(tail -10 "$LOG_FILE" 2>/dev/null || echo "")"
+  deepseek_ask "$local_question" "最近日志:\n$log_tail"
+done
 printf '\n\033[32m祝你使用愉快！\033[0m\n'

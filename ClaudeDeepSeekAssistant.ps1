@@ -133,7 +133,7 @@ $(Get-DefaultDeepSeekSkill)
 "@
 
     $payload = @{
-        model = "deepseek-chat"
+        model = "deepseek-v4-flash"
         messages = @(
             @{ role = "system"; content = $systemPrompt },
             @{ role = "user"; content = "当前环境：`n$Context`n`n用户问题：`n$Question" }

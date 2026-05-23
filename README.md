@@ -1,34 +1,105 @@
-# Claude + DeepSeek 空白电脑安装向导
+# Claude + DeepSeek 一键安装向导
 
-这是一个面向 Windows 和 macOS 的轻量安装工具，用来把一台空白电脑配置到可以在终端输入 `claude` 使用 Claude Code，并准备好 DeepSeek API 环境。
+把一台空白电脑配置到可以在终端输入 `claude` 使用 Claude Code，并自动接入 DeepSeek API。
 
-它尽量只依赖系统自带能力：
+只需要一个 DeepSeek API Key，全程自动完成。
 
-- Windows: PowerShell + WinGet
-- macOS: zsh/bash + Homebrew，若没有 Homebrew 会提示并安装
-- Claude Code: 优先使用官方原生安装方式或平台包管理器，失败后回退到 npm 安装
-- DeepSeek: 写入 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_BASE_URL`
-- 镜像策略: 国内优先，官方源兜底。Claude Code 优先通过 npm 国内镜像安装，npm/pip/Homebrew 默认配置国内镜像。
+---
 
-## 新特性
-
-### 实时进度指示
-
-命令行安装脚本现在为所有耗时操作提供实时进度反馈：
+## 它做了什么
 
 ```
-⠹ 正在安装 Node.js LTS... (12s)
-⠼ 正在更新 Homebrew 索引... (8s)
-⠧ 正在通过 npm 安装 Claude Code... (45s)
+┌─────────────────────────────────────────────────────────────┐
+│  1. 安装 Node.js（Claude Code 运行环境）                      │
+│  2. 安装 Python（DeepSeek 测试脚本）                          │
+│  3. 配置国内镜像源（npm/pip）                                 │
+│  4. 设置环境变量（DeepSeek Key → Claude Code 直接可用）        │
+│  5. 安装 Claude Code                                         │
+│  6. 创建工作区 ~/ClaudeDeepSeekWorkspace                      │
+│  7. 进入 DeepSeek 多轮对话（有问题随时问）                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- 旋转动画每秒刷新，显示已耗时秒数
-- 覆盖 Homebrew 安装、brew update、brew install、npm install 等所有长耗时步骤
-- Homebrew 首次安装因需要 sudo 交互，直接输出到终端（可看到完整进度并输入密码）
+安装完成后，打开终端输入 `claude` 就能用 DeepSeek 驱动的 Claude Code 了。
 
-### DeepSeek AI 助手集成（命令行版）
+---
 
-安装过程中遇到错误时，脚本会**自动调用 DeepSeek 分析原因并给出修复建议**：
+## 快速开始
+
+### macOS
+
+**方式一：双击运行（推荐小白）**
+
+1. 在 Finder 中打开本文件夹
+2. 双击 `Start-macOS-Setup.command`
+3. 如果提示"无法验证开发者"→ 系统偏好设置 → 安全性与隐私 → 点"仍要打开"
+
+**方式二：命令行**
+
+```bash
+chmod +x ./claude-deepseek-setup.sh
+./claude-deepseek-setup.sh
+```
+
+### Windows
+
+**方式一：双击运行（推荐小白）**
+
+1. 双击 `Start-Windows-Setup.cmd`
+2. 界面里输入 DeepSeek API Key，点"一键启动安装"
+
+**方式二：命令行**
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\claude-deepseek-setup.ps1
+```
+
+---
+
+## 运行效果
+
+### 终端自动美化
+
+脚本启动时自动切换为深色主题 + 14号字体，固化为默认设置：
+
+```
+==> 正在优化终端显示效果...
+OK  已切换为深色主题、14号字体，并设为默认
+```
+
+### 安装过程（一路回车即可）
+
+```
+Claude + DeepSeek 空白电脑安装向导
+💡 安装过程中如果遇到问题，DeepSeek AI 助手会自动分析并给出建议。
+
+请输入 DeepSeek API Key: sk-xxxx...
+
+OK  Homebrew 可用
+OK  Node.js 已可用 (v22.15.0)
+系统已有 Node.js，是否跳过？ [Y/n] y
+OK  Python 已可用 (Python 3.11.5)
+系统已有 Python，是否跳过？ [Y/n] y
+
+==> 配置 Claude Code 使用 DeepSeek
+OK  ANTHROPIC_BASE_URL 已设置
+OK  ANTHROPIC_AUTH_TOKEN 已设置
+OK  ANTHROPIC_MODEL 已设置
+
+==> 安装 Claude Code
+OK  Claude Code 已安装 (2.1.150)
+
+==> 验证命令
+OK  node -v
+OK  npm -v
+OK  python3 --version
+OK  claude --version
+
+OK  安装流程完成。请重新打开终端，然后输入: claude
+```
+
+### 失败时 DeepSeek 自动诊断
 
 ```
 XX  Node.js LTS 安装失败 (exit code: 1)
@@ -44,124 +115,105 @@ XX  Node.js LTS 安装失败 (exit code: 1)
 └────────────────────────────────────────────────────────────┘
 ```
 
-- 每个安装步骤失败时自动触发 DeepSeek 诊断
-- 基于当前环境信息和最近日志分析问题
-- 用中文给出最多 3 个具体修复步骤
-- 安装完成后可选择继续向 DeepSeek 提问
+### 安装后多轮对话
 
-## 快速使用
+```
+━━━ DeepSeek 助手（输入问题回车发送，直接回车退出）━━━
 
-### Windows 图形界面，推荐
+你: 怎么用 Claude Code？
 
-双击：
+┌─ DeepSeek 助手 ─────────────────────────────────────────┐
+│ Claude Code 已经配置好了。
+│
+│ 1. 打开终端，输入 claude 回车
+│ 2. 直接用中文描述你想做的事
+│ 3. 比如："帮我写一个 Python 爬虫"
+└────────────────────────────────────────────────────────────┘
 
-```text
-Start-Windows-Setup.cmd
+你: (直接回车退出)
+
+祝你使用愉快！
 ```
 
-界面里只需要先输入 DeepSeek API Key，然后可以：
+---
 
-- 保存 Key
-- 重新检测环境
-- 不会的地方直接问 DeepSeek
-- 一键启动安装
-- 打开工作区
-- 打开终端运行 Claude
+## 技术细节
 
-### Windows 命令行
+### Claude Code 如何使用 DeepSeek
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\claude-deepseek-setup.ps1
+脚本自动配置以下环境变量，让 Claude Code 通过 DeepSeek 的 Anthropic 兼容端点工作：
+
+| 环境变量 | 值 | 作用 |
+|---------|-----|------|
+| `ANTHROPIC_BASE_URL` | `https://api.deepseek.com/anthropic` | API 请求发到 DeepSeek |
+| `ANTHROPIC_AUTH_TOKEN` | 你的 DeepSeek Key | 认证 |
+| `ANTHROPIC_MODEL` | `deepseek-v4-pro` | 使用 DeepSeek V4 Pro |
+
+### 模型选择
+
+| 场景 | 模型 | 说明 |
+|------|------|------|
+| Claude Code 干活 | `deepseek-v4-pro` | 更强的推理和代码能力 |
+| 脚本内置 AI 助手 | `deepseek-v4-flash` | 快速响应、低成本 |
+
+### 镜像策略
+
+- Node.js：优先从 npmmirror（淘宝源）下载 .pkg 安装包
+- npm：`https://registry.npmmirror.com`
+- pip：清华源 → 阿里云 → 华为云 → 官方
+- Homebrew：阿里云镜像
+
+### 创建的工作区
+
+```
+~/ClaudeDeepSeekWorkspace/
+├── .env                              # DeepSeek Key（不提交 Git）
+├── .env.example                      # 示例
+├── .gitignore
+├── CLAUDE.md                         # Claude Code 工作区配置
+├── skills/deepseek-automation/
+│   └── SKILL.md                      # DeepSeek 助手 Skill
+└── deepseek_smoke_test.py            # 验证 DeepSeek API 连通性
 ```
 
-如果只是想预览会执行什么：
+---
 
-```powershell
-.\claude-deepseek-setup.ps1 -DryRun
-```
+## 文件说明
 
-### macOS 图形界面，推荐
+| 文件 | 平台 | 说明 |
+|------|------|------|
+| `Start-macOS-Setup.command` | macOS | 双击启动（图形菜单入口） |
+| `ClaudeDeepSeekAssistant.command` | macOS | 图形菜单：保存Key/问AI/检测环境/安装 |
+| `claude-deepseek-setup.sh` | macOS | 命令行安装脚本 |
+| `Start-Windows-Setup.cmd` | Windows | 双击启动 |
+| `Start-Windows-Console-Setup.cmd` | Windows | 命令行启动 |
+| `ClaudeDeepSeekAssistant.ps1` | Windows | 图形界面助手 |
+| `claude-deepseek-setup.ps1` | Windows | 命令行安装脚本 |
 
-双击：
+---
 
-```text
-Start-macOS-Setup.command
-```
+## 设计原则
 
-它会打开 macOS 原生弹窗菜单，可以保存 Key、问 DeepSeek、检测环境、一键启动安装、打开工作区、打开终端运行 Claude。
+- **空白电脑可用** — 不依赖预装开发工具
+- **一个 Key 搞定** — 只需 DeepSeek API Key，无需 Anthropic 账号
+- **国内网络友好** — 所有下载优先走国内镜像
+- **失败有兜底** — AI 自动诊断错误，给出修复建议
+- **可重复运行** — 已安装的会跳过，不会重复操作
+- **不污染仓库** — API Key 只写入本机环境变量和工作区 .env
 
-> 首次运行如果提示"无法验证开发者"，前往 **系统偏好设置 → 安全性与隐私 → 通用**，点击"仍要打开"。
+---
 
-### macOS 命令行
+## 获取 DeepSeek API Key
 
-打开 Terminal，进入本目录后执行：
+1. 访问 https://platform.deepseek.com/
+2. 注册/登录
+3. 进入 API Keys 页面，创建新 Key
+4. 复制 Key（以 `sk-` 开头）
 
-```bash
-chmod +x ./claude-deepseek-setup.sh
-./claude-deepseek-setup.sh
-```
+---
 
-预览模式：
+## 参考
 
-```bash
-./claude-deepseek-setup.sh --dry-run
-```
-
-## 安装完成后
-
-重新打开终端，执行：
-
-```bash
-claude
-```
-
-向导还会创建一个默认工作区：
-
-```text
-~/ClaudeDeepSeekWorkspace
-```
-
-里面包含：
-
-- `.env`
-- `.env.example`
-- `CLAUDE.md`
-- `skills/deepseek-automation/SKILL.md`
-- `deepseek_smoke_test.py`
-
-## 小白协助界面
-
-Windows 图形界面文件是：
-
-```text
-ClaudeDeepSeekAssistant.ps1
-```
-
-macOS 图形界面文件是：
-
-```text
-ClaudeDeepSeekAssistant.command
-```
-
-它们不需要 Python 或 Node.js 作为前置条件，使用系统自带能力打开。用户输入 DeepSeek Key 后，遇到安装、配置、报错问题，可以直接在界面里问 DeepSeek。DeepSeek 会根据环境检测结果和默认 skill，用中文给下一步建议。
-
-命令行脚本同样内置了 DeepSeek 助手，安装失败时自动调用，无需切换到图形界面。
-
-## 设计目标
-
-- 空白电脑可用
-- 跨平台
-- 每一步有检测、安装、验证
-- 实时进度反馈，不再"没有反应"
-- 失败时 AI 自动诊断，降低排错门槛
-- 日志和状态文件可追踪
-- 可以重复运行，已安装项会跳过
-- 检测到已有环境变量、Claude Code 或工作区文件时，会询问是否覆盖
-- API Key 不写进仓库，只写用户环境变量和本机工作区
-
-## 参考来源
-
-- Claude Code 官方安装文档: https://docs.claude.com/en/docs/claude-code/setup
-- Claude Code npm 包: https://www.npmjs.com/package/@anthropic-ai/claude-code
-- DeepSeek API 文档: https://api-docs.deepseek.com/
+- [DeepSeek API 文档](https://api-docs.deepseek.com/)
+- [DeepSeek 接入 Claude Code 官方指南](https://api-docs.deepseek.com/guides/agent_integrations/claude_code)
+- [Claude Code 官方文档](https://docs.claude.com/en/docs/claude-code/setup)

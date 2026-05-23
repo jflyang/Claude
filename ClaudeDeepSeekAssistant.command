@@ -175,7 +175,6 @@ environment_summary() {
     sw_vers -productVersion 2>/dev/null || true
     printf 'DeepSeek Key: %s\n' "$(mask_value "$(current_key)")"
     printf 'Homebrew: %s\n' "$(command -v brew >/dev/null 2>&1 && printf '已安装' || printf '未检测到')"
-    printf 'Git: %s\n' "$(command -v git >/dev/null 2>&1 && printf '已安装' || printf '未检测到')"
     printf 'Node.js: %s\n' "$(command -v node >/dev/null 2>&1 && printf '已安装' || printf '未检测到')"
     printf 'npm: %s\n' "$(command -v npm >/dev/null 2>&1 && printf '已安装' || printf '未检测到')"
     printf 'Python: %s\n' "$(command -v python3 >/dev/null 2>&1 && printf '已安装' || printf '未检测到')"
@@ -199,7 +198,7 @@ ask_deepseek() {
   local system_json user_json payload response
   system_json="$(printf '你是一个面向电脑小白的 Claude + DeepSeek 安装助手。\n下面是你必须遵守的默认 skill：\n%s' "$skill" | json_escape)"
   user_json="$(printf '当前环境：\n%s\n\n用户问题：\n%s' "$context" "$question" | json_escape)"
-  payload="{\"model\":\"deepseek-chat\",\"messages\":[{\"role\":\"system\",\"content\":$system_json},{\"role\":\"user\",\"content\":$user_json}],\"stream\":false,\"temperature\":0.2}"
+  payload="{\"model\":\"deepseek-v4-flash\",\"messages\":[{\"role\":\"system\",\"content\":$system_json},{\"role\":\"user\",\"content\":$user_json}],\"stream\":false,\"temperature\":0.2}"
 
   response="$(curl -sS --connect-timeout 20 --max-time 60 \
     "$DEEPSEEK_BASE_URL/chat/completions" \
