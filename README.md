@@ -28,27 +28,12 @@
 
 ### macOS
 
-**方式一：双击运行（推荐小白）**
-
-1. 在 Finder 中打开本文件夹
-2. 双击 `Start-macOS-Setup.command`
-3. 如果提示"无法验证开发者"→ 系统偏好设置 → 安全性与隐私 → 点"仍要打开"
-
-**方式二：命令行**
-
 ```bash
 chmod +x ./claude-deepseek-setup.sh
 ./claude-deepseek-setup.sh
 ```
 
 ### Windows
-
-**方式一：双击运行（推荐小白）**
-
-1. 双击 `Start-Windows-Setup.cmd`
-2. 界面里输入 DeepSeek API Key，点"一键启动安装"
-
-**方式二：命令行**
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -182,13 +167,8 @@ XX  Node.js LTS 安装失败 (exit code: 1)
 
 | 文件 | 平台 | 说明 |
 |------|------|------|
-| `Start-macOS-Setup.command` | macOS | 双击启动（图形菜单入口） |
-| `ClaudeDeepSeekAssistant.command` | macOS | 图形菜单：保存Key/问AI/检测环境/安装 |
-| `claude-deepseek-setup.sh` | macOS | 命令行安装脚本 |
-| `Start-Windows-Setup.cmd` | Windows | 双击启动 |
-| `Start-Windows-Console-Setup.cmd` | Windows | 命令行启动 |
-| `ClaudeDeepSeekAssistant.ps1` | Windows | 图形界面助手 |
-| `claude-deepseek-setup.ps1` | Windows | 命令行安装脚本 |
+| `claude-deepseek-setup.sh` | macOS | 安装脚本 |
+| `claude-deepseek-setup.ps1` | Windows | 安装脚本 |
 
 ---
 
