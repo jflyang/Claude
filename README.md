@@ -34,7 +34,7 @@
 2. 双击 `Start-macOS-Setup.command`
 3. 如果提示"无法验证开发者"→ 系统偏好设置 → 安全性与隐私 → 点"仍要打开"
 
-**方式二：命令行**
+**方式二：命令行（已经验证通过）**
 
 ```bash
 chmod +x ./claude-deepseek-setup.sh
