@@ -24,6 +24,9 @@ $PipIndexes = @(
     "https://repo.huaweicloud.com/repository/pypi/simple",
     "https://pypi.org/simple"
 )
+$SpinnerFrames = @("|", "/", "-", "\")
+$NodeMirrorVersion = "v22.15.0"
+$PythonMirrorVersion = "3.12.7"
 
 function Write-Step($Message) {
     Write-Host ""
@@ -65,6 +68,47 @@ function Invoke-Logged($Command, [switch]$AllowFailure) {
         if ($AllowFailure) { return $false }
         throw
     }
+}
+
+function Invoke-LoggedWithProgress($Command, $Message, [switch]$AllowFailure) {
+    Add-Content -Path $LogFile -Value "[$(Get-Date -Format s)] RUN $Command"
+    if ($DryRun) {
+        Write-Host "DRY $Command" -ForegroundColor DarkGray
+        return $true
+    }
+
+    $job = Start-Job -ScriptBlock {
+        param($CommandText, $WorkDir)
+        Set-Location -LiteralPath $WorkDir
+        Invoke-Expression $CommandText 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    } -ArgumentList $Command, (Get-Location).Path
+
+    $i = 0
+    while ($job.State -eq "Running") {
+        $frame = $SpinnerFrames[$i % $SpinnerFrames.Count]
+        Write-Host -NoNewline "`r$frame $Message"
+        Start-Sleep -Milliseconds 500
+        $i++
+    }
+    Write-Host -NoNewline "`r"
+    Write-Host (" " * ([Math]::Min([Console]::WindowWidth - 1, 80))) -NoNewline
+    Write-Host -NoNewline "`r"
+
+    $output = Receive-Job $job
+    $output | ForEach-Object { Add-Content -Path $LogFile -Value $_ }
+    $ok = $job.State -eq "Completed"
+    $exitCode = $job.ChildJobs[0].JobStateInfo.Reason
+    Remove-Job $job -Force
+
+    if (-not $ok) {
+        Add-Content -Path $LogFile -Value "Command failed: $Command $exitCode"
+        if ($AllowFailure) { return $false }
+        throw "Command failed: $Command"
+    }
+    return $true
 }
 
 function Test-Command($Name) {
@@ -122,8 +166,89 @@ function Install-WinGetPackage($Id, $DisplayName) {
 
     Write-Step "安装 $DisplayName"
     $cmd = "winget install --id $Id --exact --accept-package-agreements --accept-source-agreements"
-    $null = Invoke-Logged $cmd
+    $null = Invoke-LoggedWithProgress $cmd "正在安装 $DisplayName，请稍等..."
     Save-State $Id "installed"
+}
+
+function Install-NodeFallback {
+    Write-Warn "WinGet 安装 Node.js 失败，尝试国内镜像安装包"
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+    $url = "https://npmmirror.com/mirrors/node/$NodeMirrorVersion/node-$NodeMirrorVersion-$arch.msi"
+    $installer = Join-Path $StateDir "node-$NodeMirrorVersion-$arch.msi"
+
+    if ($DryRun) {
+        Write-Host "DRY download $url and run msiexec /i node installer /qn" -ForegroundColor DarkGray
+        Save-State "node:fallback" "dry-run"
+        return
+    }
+
+    $ok = Invoke-LoggedWithProgress "Invoke-WebRequest -Uri '$url' -OutFile '$installer' -UseBasicParsing" "正在从国内镜像下载 Node.js..." -AllowFailure
+    if (-not $ok) { throw "Node.js 国内镜像下载安装包失败：$url" }
+
+    $installCmd = "`$p = Start-Process msiexec.exe -ArgumentList '/i', '$installer', '/qn', '/norestart' -Wait -PassThru; if (`$p.ExitCode -ne 0) { exit `$p.ExitCode }"
+    $ok = Invoke-LoggedWithProgress $installCmd "正在安装 Node.js..." -AllowFailure
+    if (-not $ok) { throw "Node.js 国内镜像安装包安装失败" }
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    Save-State "node:fallback" "installed"
+}
+
+function Install-PythonFallback {
+    Write-Warn "WinGet 安装 Python 失败，尝试国内镜像安装包"
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "win32" }
+    $url = "https://npmmirror.com/mirrors/python/$PythonMirrorVersion/python-$PythonMirrorVersion-$arch.exe"
+    $installer = Join-Path $StateDir "python-$PythonMirrorVersion-$arch.exe"
+
+    if ($DryRun) {
+        Write-Host "DRY download $url and run Python installer /quiet" -ForegroundColor DarkGray
+        Save-State "python:fallback" "dry-run"
+        return
+    }
+
+    $ok = Invoke-LoggedWithProgress "Invoke-WebRequest -Uri '$url' -OutFile '$installer' -UseBasicParsing" "正在从国内镜像下载 Python..." -AllowFailure
+    if (-not $ok) { throw "Python 国内镜像下载安装包失败：$url" }
+
+    $args = "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0"
+    $installCmd = "`$p = Start-Process '$installer' -ArgumentList '$args' -Wait -PassThru; if (`$p.ExitCode -ne 0) { exit `$p.ExitCode }"
+    $ok = Invoke-LoggedWithProgress $installCmd "正在安装 Python..." -AllowFailure
+    if (-not $ok) { throw "Python 国内镜像安装包安装失败" }
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    Save-State "python:fallback" "installed"
+}
+
+function Install-Node {
+    if (Test-Command node) {
+        $ver = (& node -v 2>$null)
+        Write-Ok "Node.js 已可用 ($ver)"
+        if (Confirm-Step "系统已有 Node.js，是否跳过？" $true) {
+            Save-State "node" "system-present"
+            return
+        }
+    }
+
+    try {
+        Install-WinGetPackage "OpenJS.NodeJS.LTS" "Node.js LTS"
+    } catch {
+        Add-Content -Path $LogFile -Value $_
+        Install-NodeFallback
+    }
+}
+
+function Install-Python {
+    if (Test-Command python) {
+        $ver = (& python --version 2>$null)
+        Write-Ok "Python 已可用 ($ver)"
+        if (Confirm-Step "系统已有 Python，是否跳过？" $true) {
+            Save-State "python" "system-present"
+            return
+        }
+    }
+
+    try {
+        Install-WinGetPackage "Python.Python.3.12" "Python 3.12"
+    } catch {
+        Add-Content -Path $LogFile -Value $_
+        Install-PythonFallback
+    }
 }
 
 function Set-UserEnv($Name, $Value) {
@@ -276,7 +401,7 @@ function Install-ClaudeCode {
         foreach ($registry in $NpmRegistries) {
             Write-Step "通过 npm 镜像安装 Claude Code: $registry"
             $null = Invoke-Logged "npm config set registry $registry" -AllowFailure
-            $ok = Invoke-Logged "npm install -g @anthropic-ai/claude-code --registry $registry" -AllowFailure
+            $ok = Invoke-LoggedWithProgress "npm install -g @anthropic-ai/claude-code --registry $registry" "正在安装 Claude Code..." -AllowFailure
             if ($ok) {
                 $installed = $true
                 break
@@ -478,8 +603,8 @@ try {
     }
     Write-Ok "WinGet 可用"
 
-    Install-WinGetPackage "OpenJS.NodeJS.LTS" "Node.js LTS"
-    Install-WinGetPackage "Python.Python.3.12" "Python 3.12"
+    Install-Node
+    Install-Python
     Update-SessionPath
     Configure-ToolMirrors
 
