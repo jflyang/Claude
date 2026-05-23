@@ -26,16 +26,106 @@
 
 ## 快速开始
 
-### macOS
+### 方式 A：拖入终端运行，最适合小白
+
+如果你已经下载并解压了这个项目：
+
+#### macOS
+
+1. 打开 **Terminal / 终端**
+2. 先输入下面这 5 个字符，注意最后有一个空格：
+
+```text
+bash 
+```
+
+3. 把 `claude-deepseek-setup.sh` 文件拖进终端窗口
+4. 按回车
+
+拖进去以后，看起来会像这样，路径会自动变成你的真实位置：
+
+```bash
+bash /Users/你的名字/Downloads/Claude-main/claude-deepseek-setup.sh
+```
+
+#### Windows
+
+1. 打开 **PowerShell**
+2. 先复制下面这一整行到 PowerShell，注意最后有一个空格：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File 
+```
+
+3. 把 `claude-deepseek-setup.ps1` 文件拖进 PowerShell 窗口
+4. 按回车
+
+拖进去以后，看起来会像这样，路径会自动变成你的真实位置：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\你的名字\Downloads\Claude-main\claude-deepseek-setup.ps1
+```
+
+### 方式 B：一键远程运行，推荐给会复制命令的人
+
+打开系统自带终端，复制整段命令运行。
+
+#### macOS：打开 Terminal
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/jflyang/Claude/main/claude-deepseek-setup.sh)"
+```
+
+#### Windows：打开 PowerShell
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+$script = "$env:TEMP\claude-deepseek-setup.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jflyang/Claude/main/claude-deepseek-setup.ps1" -OutFile $script -UseBasicParsing
+powershell -NoProfile -ExecutionPolicy Bypass -File $script
+```
+
+> 不要只复制 `.\claude-deepseek-setup.ps1`。这个命令只有在脚本已经下载、并且终端已经进入脚本所在文件夹时才有效。
+
+### 方式 C：下载 ZIP 后手动运行
+
+如果你是在 GitHub 页面点 **Code → Download ZIP** 下载的：
+
+1. 解压 ZIP
+2. 打开解压后的 `Claude-main` 文件夹
+3. 在文件夹空白处打开终端
+4. 按系统复制下面命令
+
+#### macOS
 
 ```bash
 chmod +x ./claude-deepseek-setup.sh
 ./claude-deepseek-setup.sh
 ```
 
-### Windows
+#### Windows PowerShell
 
 ```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\claude-deepseek-setup.ps1
+```
+
+### 方式 D：开发者用 Git Clone
+
+#### macOS / Linux
+
+```bash
+git clone https://github.com/jflyang/Claude.git
+cd Claude
+chmod +x ./claude-deepseek-setup.sh
+./claude-deepseek-setup.sh
+```
+
+#### Windows PowerShell
+
+```powershell
+git clone https://github.com/jflyang/Claude.git
+cd Claude
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\claude-deepseek-setup.ps1
 ```
